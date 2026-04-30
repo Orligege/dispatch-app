@@ -10,11 +10,24 @@ const STORAGE_KEY = 'bn_dispatch_cloud_v1';
 const PAGE_SIZE = 50;
 const TRASH_RETENTION_DAYS = 30;
 
+// ---------- 區塊設定（未來新增區塊時，在這裡加） ----------
+const SECTIONS = {
+  bn:   { name: 'BN 派工' },
+  copy: { name: '文案派工' },
+};
+let activeSection = localStorage.getItem('bn_active_section') || 'bn';
+
 // ---------- State ----------
 let state = {
+  // BN 派工
   tasks: [],
   trash: [],          // 本地獨有：每人各自的「最近刪除」
   importHistory: [],  // 本地獨有：每人各自的匯入紀錄
+  // 文案派工
+  copyTasks: [],
+  copyTrash: [],
+  copyImportHistory: [],
+  // 共用
   dispatchers: [],
   creators: [],
 };
@@ -44,15 +57,15 @@ async function api(action, params = {}) {
 
 // ---------- 連線狀態指示燈 ----------
 function setSyncStatus(s) {
-  const el = document.getElementById('sync-status');
-  if (!el) return;
-  el.classList.remove('syncing', 'ok', 'error');
-  el.classList.add(s);
-  el.title = ({
-    syncing: '同步中...',
-    ok: '已連線雲端',
-    error: '連線失敗（離線模式）',
-  })[s] || '';
+  document.querySelectorAll('.sync-status').forEach(el => {
+    el.classList.remove('syncing', 'ok', 'error');
+    el.classList.add(s);
+    el.title = ({
+      syncing: '同步中...',
+      ok: '已連線雲端',
+      error: '連線失敗（離線模式）',
+    })[s] || '';
+  });
 }
 
 // ---------- 持久化（本地快取） ----------
@@ -66,6 +79,9 @@ function loadLocal() {
       state.creators = cached.creators || [];
       state.trash = cached.trash || [];
       state.importHistory = cached.importHistory || [];
+      state.copyTasks = cached.copyTasks || [];
+      state.copyTrash = cached.copyTrash || [];
+      state.copyImportHistory = cached.copyImportHistory || [];
       cleanOldTrash();
       return true;
     }
@@ -81,6 +97,9 @@ function saveLocal() {
       creators: state.creators,
       trash: state.trash,
       importHistory: state.importHistory,
+      copyTasks: state.copyTasks,
+      copyTrash: state.copyTrash,
+      copyImportHistory: state.copyImportHistory,
     }));
   } catch (e) { console.warn('local save failed', e); }
 }
@@ -88,10 +107,15 @@ function saveLocal() {
 async function loadFromCloud() {
   setSyncStatus('syncing');
   try {
-    const data = await api('getAll');
-    state.tasks = data.tasks || [];
-    state.dispatchers = data.dispatchers || [];
-    state.creators = data.creators || [];
+    // 同時抓 BN 和文案派工
+    const [bnData, copyData] = await Promise.all([
+      api('getAll', { sheet: 'tasks' }),
+      api('getAll', { sheet: 'copy_tasks' }),
+    ]);
+    state.tasks = bnData.tasks || [];
+    state.dispatchers = bnData.dispatchers || [];
+    state.creators = bnData.creators || [];
+    state.copyTasks = copyData.tasks || [];
     saveLocal();
     setSyncStatus('ok');
     return true;
@@ -105,6 +129,9 @@ async function loadFromCloud() {
 function cleanOldTrash() {
   const cutoff = Date.now() - TRASH_RETENTION_DAYS * 86400000;
   state.trash = state.trash.filter(item =>
+    new Date(item.deletedAt).getTime() > cutoff
+  );
+  state.copyTrash = state.copyTrash.filter(item =>
     new Date(item.deletedAt).getTime() > cutoff
   );
 }
@@ -218,19 +245,34 @@ function refreshDropdowns() {
   const creOpts = '<option value="">未指派</option>' +
     state.creators.map(a => `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`).join('');
 
+  // BN 表單
   const dispSel = document.getElementById('f-dispatcher');
   const creSel = document.getElementById('f-creator');
   const filterCre = document.getElementById('filter-creator');
+  if (dispSel && creSel && filterCre) {
+    const cur = { d: dispSel.value, c: creSel.value, fc: filterCre.value };
+    dispSel.innerHTML = dispOpts;
+    creSel.innerHTML = creOpts;
+    filterCre.innerHTML = '<option value="">全部製作人</option>' +
+      state.creators.map(a => `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`).join('') +
+      '<option value="__none__">未指派</option>';
+    dispSel.value = cur.d;
+    creSel.value = cur.c;
+    filterCre.value = cur.fc;
+  }
 
-  const cur = { d: dispSel.value, c: creSel.value, fc: filterCre.value };
-  dispSel.innerHTML = dispOpts;
-  creSel.innerHTML = creOpts;
-  filterCre.innerHTML = '<option value="">全部製作人</option>' +
-    state.creators.map(a => `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`).join('') +
-    '<option value="__none__">未指派</option>';
-  dispSel.value = cur.d;
-  creSel.value = cur.c;
-  filterCre.value = cur.fc;
+  // 文案派工表單
+  const copyCreSel = document.getElementById('f-copy-creator');
+  const copyFilterCre = document.getElementById('copy-filter-creator');
+  if (copyCreSel && copyFilterCre) {
+    const cur = { c: copyCreSel.value, fc: copyFilterCre.value };
+    copyCreSel.innerHTML = creOpts;
+    copyFilterCre.innerHTML = '<option value="">全部製作人</option>' +
+      state.creators.map(a => `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`).join('') +
+      '<option value="__none__">未指派</option>';
+    copyCreSel.value = cur.c;
+    copyFilterCre.value = cur.fc;
+  }
 }
 
 function refreshMonthFilter() {
@@ -533,10 +575,17 @@ function renderTrashList() {
 
 function updateTrashButton() {
   const btn = document.getElementById('trash-btn');
-  if (!btn) return;
-  const n = state.trash.length;
-  btn.textContent = n > 0 ? `🗑 最近刪除 (${n})` : '🗑 最近刪除';
-  btn.classList.toggle('has-items', n > 0);
+  if (btn) {
+    const n = state.trash.length;
+    btn.textContent = n > 0 ? `🗑 最近刪除 (${n})` : '🗑 最近刪除';
+    btn.classList.toggle('has-items', n > 0);
+  }
+  const copyBtn = document.getElementById('copy-trash-btn');
+  if (copyBtn) {
+    const n = state.copyTrash.length;
+    copyBtn.textContent = n > 0 ? `🗑 最近刪除 (${n})` : '🗑 最近刪除';
+    copyBtn.classList.toggle('has-items', n > 0);
+  }
 }
 
 // ---------- 人員管理 ----------
@@ -566,6 +615,7 @@ async function addPerson() {
     refreshDropdowns();
     renderPeopleList();
     render();
+    renderCopy();
     setSyncStatus('ok');
   } catch (err) {
     setSyncStatus('error');
@@ -586,6 +636,7 @@ async function removePerson(name) {
     refreshDropdowns();
     renderPeopleList();
     render();
+    renderCopy();
     setSyncStatus('ok');
   } catch (err) {
     setSyncStatus('error');
@@ -607,11 +658,19 @@ function renderPeopleList() {
   `).join('');
 }
 
-// ---------- 詳細檢視 ----------
+// ---------- 詳細檢視（先檢視，按編輯才進入編輯模式） ----------
 function showDetail(id) {
   const t = state.tasks.find(x => x.id === id);
   if (!t) return;
   document.getElementById('detail-title').textContent = `工單 #${id} ・ ${t.bnCategory || ''}`;
+  renderDetailView(id);
+  document.getElementById('detail-modal').classList.add('open');
+}
+
+// 檢視模式：除了檔案路徑可直接編輯外，其他都是純顯示
+function renderDetailView(id) {
+  const t = state.tasks.find(x => x.id === id);
+  if (!t) return;
   document.getElementById('detail-body').innerHTML = `
     <dl class="detail-grid">
       <dt>派工日期</dt><dd>${escapeHtml(t.dispatchDate || '—')}</dd>
@@ -623,10 +682,9 @@ function showDetail(id) {
       <dt>BN 尺寸</dt><dd>${escapeHtml(t.bnSize) || '—'}</dd>
       <dt>BN 內容</dt><dd>${escapeHtml(t.bnContent) || '—'}</dd>
       <dt>檔案路徑</dt><dd>
-        <textarea class="modal-path-input"
-               rows="2"
-               placeholder="點此輸入檔案路徑（可換行）..."
-               onblur="updateFilePath(${id}, this.value)">${escapeHtml(t.filePath)}</textarea>
+        <textarea class="modal-path-input" rows="2"
+                  placeholder="點此輸入檔案路徑..."
+                  onblur="updateField(${id}, 'filePath', this.value)">${escapeHtml(t.filePath)}</textarea>
       </dd>
       <dt>派工者</dt><dd>${escapeHtml(t.dispatcher) || '<span class="unassigned">未指定</span>'}</dd>
       <dt>製作人</dt><dd>${escapeHtml(t.creator) || '<span class="unassigned">未指派</span>'}</dd>
@@ -634,11 +692,153 @@ function showDetail(id) {
     </dl>
     <div style="display:flex; gap:8px; margin-top:20px; justify-content:flex-end">
       <button class="btn btn-ghost danger" onclick="closeDetail(); deleteTask(${id})">刪除</button>
-      <button class="btn btn-primary" onclick="closeDetail(); editTask(${id})">編輯</button>
+      <button class="btn btn-primary" onclick="renderDetailEdit(${id})">編輯</button>
     </div>
   `;
-  document.getElementById('detail-modal').classList.add('open');
 }
+
+// 編輯模式：所有欄位變成可編輯，按儲存才寫回雲端
+function renderDetailEdit(id) {
+  const t = state.tasks.find(x => x.id === id);
+  if (!t) return;
+
+  const dispatcherOptions = '<option value="">未指定</option>' +
+    state.dispatchers.map(a =>
+      `<option value="${escapeHtml(a)}" ${a === t.dispatcher ? 'selected' : ''}>${escapeHtml(a)}</option>`
+    ).join('');
+  const creatorOptions = '<option value="">未指派</option>' +
+    state.creators.map(a =>
+      `<option value="${escapeHtml(a)}" ${a === t.creator ? 'selected' : ''}>${escapeHtml(a)}</option>`
+    ).join('');
+  const majorOptions = ['', '電商', '通路', '行銷'].map(opt =>
+    `<option value="${opt}" ${opt === (t.majorCategory || '') ? 'selected' : ''}>${opt || '未分類'}</option>`
+  ).join('');
+  const statusOptions = `
+    <option value="pending" ${t.status === 'pending' ? 'selected' : ''}>待派工</option>
+    <option value="done" ${t.status === 'done' ? 'selected' : ''}>完成</option>
+  `;
+
+  document.getElementById('detail-body').innerHTML = `
+    <div class="detail-edit-grid">
+      <label class="detail-edit-field detail-edit-field-full">
+        <span>BN 類別 / 名稱</span>
+        <input type="text" id="edit-bnCategory" value="${escapeHtml(t.bnCategory)}" />
+      </label>
+      <label class="detail-edit-field">
+        <span>派工日期</span>
+        <input type="date" id="edit-dispatchDate" value="${escapeHtml(t.dispatchDate)}" />
+      </label>
+      <label class="detail-edit-field">
+        <span>需完成日</span>
+        <input type="date" id="edit-dueDate" value="${escapeHtml(t.dueDate)}" />
+      </label>
+      <label class="detail-edit-field">
+        <span>完成日</span>
+        <input type="date" id="edit-completedDate" value="${escapeHtml(t.completedDate)}" />
+      </label>
+      <label class="detail-edit-field">
+        <span>狀態</span>
+        <select id="edit-status">${statusOptions}</select>
+      </label>
+      <label class="detail-edit-field">
+        <span>大分類</span>
+        <select id="edit-majorCategory">${majorOptions}</select>
+      </label>
+      <label class="detail-edit-field">
+        <span>作業時間（小時）</span>
+        <input type="number" id="edit-hours" step="0.5" min="0" value="${t.hours || ''}" />
+      </label>
+      <label class="detail-edit-field">
+        <span>派工者</span>
+        <select id="edit-dispatcher">${dispatcherOptions}</select>
+      </label>
+      <label class="detail-edit-field">
+        <span>製作人</span>
+        <select id="edit-creator">${creatorOptions}</select>
+      </label>
+      <label class="detail-edit-field detail-edit-field-full">
+        <span>BN 尺寸</span>
+        <textarea id="edit-bnSize" rows="3">${escapeHtml(t.bnSize)}</textarea>
+      </label>
+      <label class="detail-edit-field detail-edit-field-full">
+        <span>BN 內容</span>
+        <textarea id="edit-bnContent" rows="3">${escapeHtml(t.bnContent)}</textarea>
+      </label>
+      <label class="detail-edit-field detail-edit-field-full">
+        <span>檔案路徑</span>
+        <textarea id="edit-filePath" rows="2" placeholder="點此輸入檔案路徑（可換行）...">${escapeHtml(t.filePath)}</textarea>
+      </label>
+    </div>
+    <div style="display:flex; gap:8px; margin-top:20px; justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="renderDetailView(${id})">取消</button>
+      <button class="btn btn-primary" onclick="saveDetailEdit(${id})">儲存</button>
+    </div>
+  `;
+}
+
+async function saveDetailEdit(id) {
+  const t = state.tasks.find(x => x.id === id);
+  if (!t) return;
+
+  const data = {
+    bnCategory: document.getElementById('edit-bnCategory').value.trim(),
+    dispatchDate: document.getElementById('edit-dispatchDate').value || '',
+    dueDate: document.getElementById('edit-dueDate').value || '',
+    completedDate: document.getElementById('edit-completedDate').value || '',
+    status: document.getElementById('edit-status').value,
+    majorCategory: document.getElementById('edit-majorCategory').value,
+    hours: parseFloat(document.getElementById('edit-hours').value) || 0,
+    dispatcher: document.getElementById('edit-dispatcher').value,
+    creator: document.getElementById('edit-creator').value,
+    bnSize: document.getElementById('edit-bnSize').value.trim(),
+    bnContent: document.getElementById('edit-bnContent').value.trim(),
+    filePath: document.getElementById('edit-filePath').value.trim(),
+  };
+
+  // 自動規則：完成日填了就自動轉「完成」狀態；狀態改完成且沒填完成日就填今天
+  if (data.status === 'done' && !data.completedDate) data.completedDate = todayStr();
+  if (data.completedDate && data.status !== 'done') data.status = 'done';
+
+  setSyncStatus('syncing');
+  try {
+    const payload = { ...t, ...data };
+    const result = await api('update', { sheet: 'tasks', payload });
+    const idx = state.tasks.findIndex(x => x.id === id);
+    if (idx >= 0) state.tasks[idx] = result;
+    saveLocal();
+    refreshMonthFilter();
+    render();
+    setSyncStatus('ok');
+    renderDetailView(id);  // 存完回到檢視模式
+  } catch (err) {
+    setSyncStatus('error');
+    alert('儲存失敗：' + err.message);
+  }
+}
+
+// 給檢視模式下的「檔案路徑」即時編輯用
+async function updateField(id, key, rawValue) {
+  const t = state.tasks.find(x => x.id === id);
+  if (!t) return;
+  let value = rawValue;
+  if (key === 'hours') value = parseFloat(rawValue) || 0;
+  if (String(t[key] || '') === String(value || '')) return;
+
+  setSyncStatus('syncing');
+  try {
+    const payload = { ...t, [key]: value };
+    const result = await api('update', { sheet: 'tasks', payload });
+    const idx = state.tasks.findIndex(x => x.id === id);
+    if (idx >= 0) state.tasks[idx] = result;
+    saveLocal();
+    render();
+    setSyncStatus('ok');
+  } catch (err) {
+    setSyncStatus('error');
+    alert('更新失敗：' + err.message);
+  }
+}
+
 function closeDetail() {
   document.getElementById('detail-modal').classList.remove('open');
 }
@@ -951,7 +1151,9 @@ async function refreshFromCloud() {
   await loadFromCloud();
   refreshDropdowns();
   refreshMonthFilter();
+  refreshCopyMonthFilter();
   render();
+  renderCopy();
 }
 
 // ---------- 檢視切換 / 排序 / 篩選 ----------
@@ -1089,7 +1291,6 @@ function renderTable(rows) {
         <td class="cell-date">${escapeHtml(formatTableDate(t.completedDate))}</td>
         <td class="cell-num">${Math.round((t.hours || 0) * 10) / 10}</td>
         <td class="cell-actions">
-          <button class="icon-btn" onclick="event.stopPropagation(); editTask(${t.id})">編輯</button>
           <button class="icon-btn del" onclick="event.stopPropagation(); deleteTask(${t.id})">刪</button>
         </td>
       </tr>
@@ -1273,21 +1474,58 @@ function renderCharts(visible) {
   });
 }
 
+// ---------- 漢堡選單 / 區塊切換 ----------
+function toggleSidebar() {
+  const isOpen = document.getElementById('sidebar').classList.contains('open');
+  if (isOpen) closeSidebar();
+  else openSidebar();
+}
+function openSidebar() {
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sidebar-overlay').classList.add('open');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('open');
+}
+function switchSection(id) {
+  if (!SECTIONS[id]) return;
+  activeSection = id;
+  localStorage.setItem('bn_active_section', id);
+  // 更新左邊選單的 active 樣式
+  document.querySelectorAll('.sidebar-item').forEach(item => {
+    item.classList.toggle('active', item.dataset.section === id);
+  });
+  // 切換區塊顯示
+  document.querySelectorAll('.page-section').forEach(s => {
+    s.style.display = 'none';
+  });
+  const target = document.getElementById('section-' + id);
+  if (target) target.style.display = '';
+  closeSidebar();
+}
+
 // ---------- 啟動 ----------
 async function init() {
   loadTheme();
+  // 還原上次選的區塊
+  switchSection(activeSection);
   // 1. 先用本地快取立即顯示（如果有的話）
   loadLocal();
   refreshDropdowns();
   refreshMonthFilter();
+  refreshCopyMonthFilter();
   document.getElementById('f-dispatchDate').value = todayStr();
   render();
+  renderCopy();
 
   // 2. 然後從雲端拉最新資料覆蓋
   const ok = await loadFromCloud();
   refreshDropdowns();
   refreshMonthFilter();
+  refreshCopyMonthFilter();
   render();
+  renderCopy();
 
   if (!ok) {
     console.warn('Cloud connection failed - using local cache only');
