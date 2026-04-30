@@ -16,7 +16,14 @@ let copyCurrentCalendarMonth = new Date();
 
 // ---------- 工具 ----------
 function copyIsLaunched(t) { return t.launched === true || t.launched === '✓'; }
-function copyStatusLabel(t) { return copyIsLaunched(t) ? '已上架' : '進行中'; }
+
+// 狀態（從文案圖完成日期推導）：有日期 = 完成，沒日期 = 待派工
+function copyComputedStatus(t) {
+  return t.imageCompleted ? 'done' : 'pending';
+}
+function copyStatusLabel(t) {
+  return copyComputedStatus(t) === 'done' ? '完成' : '待派工';
+}
 
 // ---------- CRUD ----------
 async function submitCopyTask() {
@@ -174,8 +181,10 @@ function getVisibleCopyTasks() {
         .join(' ').toLowerCase();
       if (!blob.includes(search)) return false;
     }
+    // 狀態篩選：pending = 待派工、done = 完成、launched = 已上架（獨立於 done）
+    if (fs === 'pending' && copyComputedStatus(t) !== 'pending') return false;
+    if (fs === 'done' && copyComputedStatus(t) !== 'done') return false;
     if (fs === 'launched' && !copyIsLaunched(t)) return false;
-    if (fs === 'pending' && copyIsLaunched(t)) return false;
     if (fc === '__none__' && t.creator) return false;
     if (fc && fc !== '__none__' && t.creator !== fc) return false;
     if (fmonth && getMonthOf(t.writingDate) !== fmonth) return false;
@@ -228,12 +237,15 @@ function renderCopy() {
     return 0;
   });
 
-  let pendingCount = 0, launchedCount = 0;
+  let pendingCount = 0, doneCount = 0, launchedCount = 0;
   visible.forEach(t => {
-    if (copyIsLaunched(t)) launchedCount++; else pendingCount++;
+    if (copyComputedStatus(t) === 'pending') pendingCount++;
+    else doneCount++;
+    if (copyIsLaunched(t)) launchedCount++;
   });
   document.getElementById('copy-m-total').textContent = visible.length;
   document.getElementById('copy-m-pending').textContent = pendingCount;
+  document.getElementById('copy-m-done').textContent = doneCount;
   document.getElementById('copy-m-launched').textContent = launchedCount;
 
   const fmonth = document.getElementById('copy-filter-month').value;
@@ -285,6 +297,7 @@ function renderCopyTable(rows) {
         <td class="cell-date">${escapeHtml(formatTableDate(t.writingDate))}</td>
         <td class="cell-date">${escapeHtml(formatTableDate(t.copyConfirmedDate))}</td>
         <td class="cell-date">${escapeHtml(formatTableDate(t.imageCompleted))}</td>
+        <td><span class="status-pill ${copyComputedStatus(t)}">${copyStatusLabel(t)}</span></td>
         <td style="text-align:center">
           <input type="checkbox" class="launched-check" ${launched ? 'checked' : ''} onclick="event.stopPropagation(); toggleCopyLaunched(${t.id})" />
         </td>
@@ -476,10 +489,12 @@ function renderCopyDetailView(id) {
   const launchedHtml = copyIsLaunched(t)
     ? '<span class="status-pill done">✓ 已上架</span>'
     : '<span class="status-pill pending">未上架</span>';
+  const statusHtml = `<span class="status-pill ${copyComputedStatus(t)}">${copyStatusLabel(t)}</span>`;
   document.getElementById('detail-body').innerHTML = `
     <dl class="detail-grid">
       <dt>品牌</dt><dd>${escapeHtml(t.brand) || '—'}</dd>
       <dt>品名</dt><dd>${escapeHtml(t.productName)}</dd>
+      <dt>狀態</dt><dd>${statusHtml}</dd>
       <dt>撰寫完成日期</dt><dd>${escapeHtml(t.writingDate || '—')}</dd>
       <dt>文案確認日期</dt><dd>${escapeHtml(t.copyConfirmedDate || '—')}</dd>
       <dt>文案圖完成日期</dt><dd>${escapeHtml(t.imageCompleted || '—')}</dd>

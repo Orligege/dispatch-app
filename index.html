@@ -262,7 +262,8 @@
       <!-- 指標數據 -->
       <section class="metrics">
         <div class="metric"><span class="metric-label">總工單</span><span class="metric-value" id="copy-m-total">0</span></div>
-        <div class="metric"><span class="metric-label">進行中</span><span class="metric-value pending" id="copy-m-pending">0</span></div>
+        <div class="metric"><span class="metric-label">待派工</span><span class="metric-value pending" id="copy-m-pending">0</span></div>
+        <div class="metric"><span class="metric-label">完成</span><span class="metric-value" id="copy-m-done">0</span></div>
         <div class="metric"><span class="metric-label">已上架</span><span class="metric-value" id="copy-m-launched">0</span></div>
       </section>
 
@@ -326,7 +327,8 @@
         </select>
         <select id="copy-filter-status" onchange="onCopyFilterChange()">
           <option value="">全部狀態</option>
-          <option value="pending">進行中</option>
+          <option value="pending">待派工</option>
+          <option value="done">完成</option>
           <option value="launched">已上架</option>
         </select>
         <select id="copy-filter-creator" onchange="onCopyFilterChange()">
@@ -349,6 +351,7 @@
                 <th class="col-date" onclick="sortCopyBy('writingDate')">撰寫</th>
                 <th class="col-date" onclick="sortCopyBy('copyConfirmedDate')">確認</th>
                 <th class="col-date" onclick="sortCopyBy('imageCompleted')">圖完成</th>
+                <th style="width:80px">狀態</th>
                 <th style="width:60px">上架</th>
                 <th style="width:110px">製作人</th>
                 <th style="width:80px">優先</th>
