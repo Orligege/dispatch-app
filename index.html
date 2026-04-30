@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BN 派工管理系統</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- 標題列 -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark"></div>
+        <div>
+          <h1>BN 派工管理</h1>
+          <p class="sub">Banner Production · 派工系統</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost" onclick="downloadTemplate()">範本</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('import-xlsx').click()">匯入 Excel</button>
+        <button class="btn btn-ghost" onclick="openImportHistory()" title="匯入紀錄">📋</button>
+        <input type="file" id="import-xlsx" accept=".xlsx,.xls" style="display:none" onchange="importExcel(event)" />
+        <button class="btn btn-ghost" onclick="exportExcel()" title="匯出為 Excel">匯出 Excel</button>
+        <button class="btn btn-ghost" id="trash-btn" onclick="openTrash()">🗑 最近刪除</button>
+        <button class="btn btn-ghost" onclick="refreshFromCloud()" title="從雲端重新載入最新資料">🔄 重新整理</button>
+        <span id="sync-status" class="sync-status" title="連線狀態"></span>
+        <button class="btn btn-ghost" id="theme-toggle" onclick="toggleTheme()">🌙</button>
+      </div>
+    </header>
+
+    <!-- 指標數據 -->
+    <section class="metrics">
+      <div class="metric"><span class="metric-label">總工單</span><span class="metric-value" id="m-total">0</span></div>
+      <div class="metric"><span class="metric-label">待派工</span><span class="metric-value pending" id="m-pending">0</span></div>
+      <div class="metric"><span class="metric-label">已完成</span><span class="metric-value done" id="m-done">0</span></div>
+      <div class="metric"><span class="metric-label">逾期</span><span class="metric-value overdue" id="m-overdue">0</span></div>
+    </section>
+
+    <!-- 表單 -->
+    <section class="card form-card">
+      <div class="card-head">
+        <h2 id="form-title">新增工單</h2>
+        <span class="form-hint" id="form-msg"></span>
+      </div>
+
+      <div class="form-grid">
+        <label class="field" style="grid-column: span 3">
+          <span>派工日期</span>
+          <input type="date" id="f-dispatchDate" />
+        </label>
+        <label class="field" style="grid-column: span 3">
+          <span>需完成日</span>
+          <input type="date" id="f-dueDate" />
+        </label>
+        <label class="field" style="grid-column: span 3">
+          <span>完成日</span>
+          <input type="date" id="f-completedDate" />
+        </label>
+        <label class="field" style="grid-column: span 3">
+          <span>作業時間 (h)</span>
+          <input type="number" id="f-hours" placeholder="0" min="0" step="0.5" />
+        </label>
+
+        <label class="field" style="grid-column: span 2">
+          <span>大分類</span>
+          <select id="f-majorCategory">
+            <option value="">未分類</option>
+            <option value="電商">電商</option>
+            <option value="通路">通路</option>
+            <option value="行銷">行銷</option>
+          </select>
+        </label>
+        <label class="field" style="grid-column: span 4">
+          <span>BN 類別 / 名稱</span>
+          <input type="text" id="f-bnCategory" placeholder="例如：PC 穿戴館 BN" />
+        </label>
+        <label class="field" style="grid-column: span 2">
+          <span>製作人</span>
+          <select id="f-creator">
+            <option value="">未指派</option>
+          </select>
+        </label>
+        <label class="field" style="grid-column: span 2">
+          <span>狀態</span>
+          <select id="f-status">
+            <option value="pending">待派工</option>
+            <option value="done">完成</option>
+          </select>
+        </label>
+        <label class="field" style="grid-column: span 2">
+          <span>派工者</span>
+          <select id="f-dispatcher">
+            <option value="">未指定</option>
+          </select>
+        </label>
+
+        <label class="field" style="grid-column: span 6">
+          <span>BN 尺寸（可多行）</span>
+          <textarea id="f-bnSize" rows="3" placeholder="1644 x 604 (<395KB)&#10;462 x 462 (<225KB)"></textarea>
+        </label>
+        <label class="field" style="grid-column: span 6">
+          <span>BN 內容（活動說明、檔案路徑等）</span>
+          <textarea id="f-bnContent" rows="3" placeholder="3.23-4.06 myFirst 歡慶兒童節!&#10;限時優惠..."></textarea>
+        </label>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn btn-ghost" id="cancel-btn" onclick="cancelEdit()" style="display:none">取消編輯</button>
+        <button class="btn btn-ghost" onclick="openPeopleManager('dispatcher')">管理派工者</button>
+        <button class="btn btn-ghost" onclick="openPeopleManager('creator')">管理製作人</button>
+        <button class="btn btn-primary" id="submit-btn" onclick="submitTask()">新增工單</button>
+      </div>
+    </section>
+
+    <!-- 篩選列 -->
+    <div class="filter-bar">
+      <input type="text" id="search" placeholder="搜尋類別、內容、人員..." oninput="onFilterChange()" />
+      <select id="filter-month" onchange="onFilterChange()">
+        <option value="">全部月份</option>
+      </select>
+      <select id="filter-major" onchange="onFilterChange()">
+        <option value="">全部分類</option>
+        <option value="電商">電商</option>
+        <option value="通路">通路</option>
+        <option value="行銷">行銷</option>
+        <option value="__none__">未分類</option>
+      </select>
+      <select id="filter-status" onchange="onFilterChange()">
+        <option value="">全部狀態</option>
+        <option value="pending">待派工</option>
+        <option value="done">完成</option>
+      </select>
+      <select id="filter-creator" onchange="onFilterChange()">
+        <option value="">全部製作人</option>
+      </select>
+      <select id="filter-urgent" onchange="onFilterChange()">
+        <option value="">全部</option>
+        <option value="urgent">🔥 只看急件</option>
+      </select>
+      <div class="view-toggle">
+        <button class="view-btn active" data-view="table" onclick="setView('table')">表格</button>
+        <button class="view-btn" data-view="calendar" onclick="setView('calendar')">日曆</button>
+      </div>
+    </div>
+
+    <!-- 表格 -->
+    <section class="table-wrap" id="view-table">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th class="col-date" onclick="sortBy('dispatchDate')">派工日期</th>
+            <th style="width:90px" onclick="sortBy('majorCategory')">大分類</th>
+            <th style="width:140px" onclick="sortBy('bnCategory')">BN 類別</th>
+            <th style="width:180px">BN 尺寸</th>
+            <th>BN 內容</th>
+            <th style="width:110px">製作人</th>
+            <th style="width:80px">狀態</th>
+            <th style="width:80px">派工者</th>
+            <th class="col-date" onclick="sortBy('dueDate')">需完成</th>
+            <th class="col-date" onclick="sortBy('completedDate')">完成日</th>
+            <th style="width:60px">時數</th>
+            <th style="width:90px"></th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+      <div class="empty-table" id="table-empty" style="display:none">尚無工單，可在上方新增或從 Excel 匯入</div>
+    </section>
+
+    <!-- 分頁 -->
+    <div class="pagination" id="pagination"></div>
+
+    <!-- 日曆 -->
+    <section class="calendar" id="view-calendar" style="display:none">
+      <div class="calendar-header">
+        <button class="btn btn-ghost" onclick="changeCalendarMonth(-1)" title="上個月">‹</button>
+        <h3 id="calendar-title">2026年4月</h3>
+        <button class="btn btn-ghost" onclick="changeCalendarMonth(1)" title="下個月">›</button>
+        <button class="btn btn-ghost" onclick="goToCurrentMonth()" style="margin-left:auto">今天</button>
+      </div>
+      <div class="calendar-grid" id="calendar-grid"></div>
+      <p class="calendar-note">📅 工單依「需完成日」放在對應日期上 · 點工單可看詳細資料</p>
+    </section>
+
+    <!-- 統計 -->
+    <section class="charts">
+      <div class="card chart-card">
+        <h3>各製作人累計工時 <span class="chart-sub" id="hours-month-label"></span></h3>
+        <div class="chart-wrap"><canvas id="hours-chart"></canvas></div>
+      </div>
+      <div class="card chart-card">
+        <h3>各製作人完成件數 <span class="chart-sub" id="count-month-label"></span></h3>
+        <div class="chart-wrap"><canvas id="count-chart"></canvas></div>
+      </div>
+    </section>
+
+    <footer class="foot">資料儲存於瀏覽器 localStorage · 可隨時匯出 Excel 備份</footer>
+  </div>
+
+  <!-- 人員管理 Modal -->
+  <div class="modal-overlay" id="people-modal" onclick="if(event.target===this) closePeopleManager()">
+    <div class="modal">
+      <div class="modal-head">
+        <h2 id="people-title">管理人員</h2>
+        <button class="icon-x" onclick="closePeopleManager()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="add-row">
+          <input type="text" id="new-person" placeholder="輸入人員名稱" onkeydown="if(event.key==='Enter') addPerson()" />
+          <button class="btn btn-primary" onclick="addPerson()">新增</button>
+        </div>
+        <ul class="assignee-list" id="people-list"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- 詳細檢視 Modal -->
+  <div class="modal-overlay" id="detail-modal" onclick="if(event.target===this) closeDetail()">
+    <div class="modal modal-wide">
+      <div class="modal-head">
+        <h2 id="detail-title">工單明細</h2>
+        <button class="icon-x" onclick="closeDetail()">×</button>
+      </div>
+      <div class="modal-body" id="detail-body"></div>
+    </div>
+  </div>
+
+  <!-- 最近刪除 Modal -->
+  <div class="modal-overlay" id="trash-modal" onclick="if(event.target===this) closeTrash()">
+    <div class="modal modal-wide">
+      <div class="modal-head">
+        <h2>🗑 最近刪除</h2>
+        <button class="icon-x" onclick="closeTrash()">×</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:12px; color: var(--text-muted); margin: 0 0 12px">
+          刪除的工單會在這裡保留 30 天，期間可隨時復原。30 天後會自動永久刪除。
+        </p>
+        <div style="display:flex; gap:8px; margin-bottom:14px;">
+          <button class="btn btn-ghost" onclick="restoreAllTrash()">全部復原</button>
+          <button class="btn btn-ghost danger" onclick="emptyTrash()">清空垃圾桶</button>
+        </div>
+        <ul class="trash-list" id="trash-list"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- 匯入紀錄 Modal -->
+  <div class="modal-overlay" id="import-history-modal" onclick="if(event.target===this) closeImportHistory()">
+    <div class="modal modal-wide">
+      <div class="modal-head">
+        <h2>📋 Excel 匯入紀錄</h2>
+        <button class="icon-x" onclick="closeImportHistory()">×</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:12px; color: var(--text-muted); margin: 0 0 12px">
+          系統會記錄每次匯入的檔名、時間、筆數，並保留檔案內容（最多 10 筆）。可隨時下載備份。
+        </p>
+        <div style="display:flex; gap:8px; margin-bottom:14px;">
+          <button class="btn btn-ghost danger" onclick="clearImportHistory()">清空紀錄</button>
+        </div>
+        <ul class="trash-list" id="import-history-list"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- 匯出 Excel Modal -->
+  <div class="modal-overlay" id="export-modal" onclick="if(event.target===this) closeExportModal()">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>匯出 Excel</h2>
+        <button class="icon-x" onclick="closeExportModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:13px; color: var(--text-muted); margin: 0 0 14px">選擇匯出範圍：</p>
+        <div class="export-options">
+          <label class="export-opt">
+            <input type="radio" name="export-range" value="all" checked />
+            <span>全部資料</span>
+            <span class="count" id="export-count-all">0 筆</span>
+          </label>
+          <label class="export-opt">
+            <input type="radio" name="export-range" value="filtered" />
+            <span>目前篩選結果</span>
+            <span class="count" id="export-count-filtered">0 筆</span>
+          </label>
+          <label class="export-opt">
+            <input type="radio" name="export-range" value="month" />
+            <span>指定月份</span>
+            <select id="export-month-pick" onclick="document.querySelector('input[name=export-range][value=month]').checked = true" onchange="document.querySelector('input[name=export-range][value=month]').checked = true"></select>
+          </label>
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top: 18px;">
+          <button class="btn btn-ghost" onclick="closeExportModal()">取消</button>
+          <button class="btn btn-primary" onclick="doExportSelected()">匯出</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
