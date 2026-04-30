@@ -33,8 +33,54 @@
         <span>文案派工</span>
       </button>
       <!-- 之後要新增更多區塊，在這裡多加一個 sidebar-item 就好 -->
+
+      <div class="sidebar-divider"></div>
+
+      <button class="sidebar-item sidebar-toggle" id="excel-toggle" onclick="toggleExcelMenu()">
+        <span class="sidebar-icon">📊</span>
+        <span style="flex:1">Excel 工具</span>
+        <span class="chevron">▾</span>
+      </button>
+      <div class="sidebar-submenu" id="excel-submenu">
+        <button class="sidebar-item sub" onclick="switchSection('bn'); document.getElementById('import-xlsx').click()">
+          <span class="sidebar-icon">📥</span>
+          <span>匯入 BN 派工</span>
+        </button>
+        <button class="sidebar-item sub" onclick="switchSection('copy'); document.getElementById('copy-import-xlsx').click()">
+          <span class="sidebar-icon">📥</span>
+          <span>匯入 文案派工</span>
+        </button>
+        <button class="sidebar-item sub" onclick="exportExcel(); closeSidebar()">
+          <span class="sidebar-icon">📤</span>
+          <span>匯出 BN 派工</span>
+        </button>
+        <button class="sidebar-item sub" onclick="exportCopyExcel(); closeSidebar()">
+          <span class="sidebar-icon">📤</span>
+          <span>匯出 文案派工</span>
+        </button>
+        <button class="sidebar-item sub" onclick="downloadTemplate(); closeSidebar()">
+          <span class="sidebar-icon">📄</span>
+          <span>BN 範本下載</span>
+        </button>
+        <button class="sidebar-item sub" onclick="downloadCopyTemplate(); closeSidebar()">
+          <span class="sidebar-icon">📄</span>
+          <span>文案範本下載</span>
+        </button>
+        <button class="sidebar-item sub" onclick="openImportHistory(); closeSidebar()">
+          <span class="sidebar-icon">📋</span>
+          <span>BN 匯入紀錄</span>
+        </button>
+        <button class="sidebar-item sub" onclick="openCopyImportHistory(); closeSidebar()">
+          <span class="sidebar-icon">📋</span>
+          <span>文案匯入紀錄</span>
+        </button>
+      </div>
     </nav>
   </aside>
+
+  <!-- 隱藏的 Excel 上傳 input（給漢堡選單裡的匯入按鈕用） -->
+  <input type="file" id="import-xlsx" accept=".xlsx,.xls" style="display:none" onchange="importExcel(event)" />
+  <input type="file" id="copy-import-xlsx" accept=".xlsx,.xls" style="display:none" onchange="importCopyExcel(event)" />
 
   <!-- 遮罩（點擊關閉選單） -->
   <div id="sidebar-overlay" onclick="closeSidebar()"></div>
@@ -48,15 +94,10 @@
         <div class="brand-mark"></div>
         <div>
           <h1>BN 派工管理</h1>
-          <p class="sub">Banner · 派工系統</p>
+          <p class="sub">Banner Production · 派工系統</p>
         </div>
       </div>
       <div class="topbar-actions">
-        <button class="btn btn-ghost" onclick="downloadTemplate()">範本</button>
-        <button class="btn btn-ghost" onclick="document.getElementById('import-xlsx').click()">匯入 Excel</button>
-        <button class="btn btn-ghost" onclick="openImportHistory()" title="匯入紀錄">📋</button>
-        <input type="file" id="import-xlsx" accept=".xlsx,.xls" style="display:none" onchange="importExcel(event)" />
-        <button class="btn btn-ghost" onclick="exportExcel()" title="匯出為 Excel">匯出 Excel</button>
         <button class="btn btn-ghost" id="trash-btn" onclick="openTrash()">🗑 最近刪除</button>
         <button class="btn btn-ghost" onclick="refreshFromCloud()" title="從雲端重新載入最新資料">🔄 重新整理</button>
         <span id="sync-status" class="sync-status" title="連線狀態"></span>
@@ -243,15 +284,10 @@
           <div class="brand-mark"></div>
           <div>
             <h1>文案派工</h1>
-            <p class="sub">Landing Page · 文案派工系統</p>
+            <p class="sub">Copywriting · 文案派工系統</p>
           </div>
         </div>
         <div class="topbar-actions">
-          <button class="btn btn-ghost" onclick="downloadCopyTemplate()">範本</button>
-          <button class="btn btn-ghost" onclick="document.getElementById('copy-import-xlsx').click()">匯入 Excel</button>
-          <button class="btn btn-ghost" onclick="openCopyImportHistory()" title="匯入紀錄">📋</button>
-          <input type="file" id="copy-import-xlsx" accept=".xlsx,.xls" style="display:none" onchange="importCopyExcel(event)" />
-          <button class="btn btn-ghost" onclick="exportCopyExcel()" title="匯出為 Excel">匯出 Excel</button>
           <button class="btn btn-ghost" id="copy-trash-btn" onclick="openCopyTrash()">🗑 最近刪除</button>
           <button class="btn btn-ghost" onclick="refreshFromCloud()" title="從雲端重新載入最新資料">🔄 重新整理</button>
           <span class="sync-status" title="連線狀態"></span>
@@ -308,7 +344,7 @@
           </label>
           <label class="field" style="grid-column: span 2">
             <span>文圖優先順序</span>
-            <input type="text" id="f-copy-priority" placeholder="例：1 / 2 / 3" />
+            <input type="text" id="f-copy-priority" placeholder="例：高 / 1 / 急" />
           </label>
         </div>
 
