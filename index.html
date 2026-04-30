@@ -12,6 +12,35 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <!-- 漢堡按鈕 -->
+  <button class="hamburger-btn" onclick="toggleSidebar()" aria-label="選單">
+    <span></span><span></span><span></span>
+  </button>
+
+  <!-- 側邊選單 -->
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-header">
+      <h2>派工系統</h2>
+      <p>workflow management</p>
+    </div>
+    <nav class="sidebar-nav">
+      <button class="sidebar-item" data-section="bn" onclick="switchSection('bn')">
+        <span class="sidebar-icon">🎨</span>
+        <span>BN 派工</span>
+      </button>
+      <button class="sidebar-item" data-section="copy" onclick="switchSection('copy')">
+        <span class="sidebar-icon">✏️</span>
+        <span>文案派工</span>
+      </button>
+      <!-- 之後要新增更多區塊，在這裡多加一個 sidebar-item 就好 -->
+    </nav>
+  </aside>
+
+  <!-- 遮罩（點擊關閉選單） -->
+  <div id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+  <!-- ============ BN 派工區塊 ============ -->
+  <section id="section-bn" class="page-section">
   <div class="app">
     <!-- 標題列 -->
     <header class="topbar">
@@ -166,7 +195,7 @@
             <th class="col-date" onclick="sortBy('dueDate')">需完成</th>
             <th class="col-date" onclick="sortBy('completedDate')">完成日</th>
             <th style="width:60px">時數</th>
-            <th style="width:90px"></th>
+            <th style="width:50px"></th>
           </tr>
         </thead>
         <tbody id="table-body"></tbody>
@@ -203,6 +232,167 @@
 
     <footer class="foot">資料儲存於瀏覽器 localStorage · 可隨時匯出 Excel 備份</footer>
   </div>
+  </section>
+  <!-- ============ /BN 派工區塊 ============ -->
+
+  <!-- ============ 文案派工區塊 ============ -->
+  <section id="section-copy" class="page-section" style="display:none">
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark"></div>
+          <div>
+            <h1>文案派工</h1>
+            <p class="sub">Copywriting · 文案派工系統</p>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button class="btn btn-ghost" onclick="downloadCopyTemplate()">範本</button>
+          <button class="btn btn-ghost" onclick="document.getElementById('copy-import-xlsx').click()">匯入 Excel</button>
+          <button class="btn btn-ghost" onclick="openCopyImportHistory()" title="匯入紀錄">📋</button>
+          <input type="file" id="copy-import-xlsx" accept=".xlsx,.xls" style="display:none" onchange="importCopyExcel(event)" />
+          <button class="btn btn-ghost" onclick="exportCopyExcel()" title="匯出為 Excel">匯出 Excel</button>
+          <button class="btn btn-ghost" id="copy-trash-btn" onclick="openCopyTrash()">🗑 最近刪除</button>
+          <button class="btn btn-ghost" onclick="refreshFromCloud()" title="從雲端重新載入最新資料">🔄 重新整理</button>
+          <span class="sync-status" title="連線狀態"></span>
+          <button class="btn btn-ghost" onclick="toggleTheme()">🌙</button>
+        </div>
+      </header>
+
+      <!-- 指標數據 -->
+      <section class="metrics">
+        <div class="metric"><span class="metric-label">總工單</span><span class="metric-value" id="copy-m-total">0</span></div>
+        <div class="metric"><span class="metric-label">進行中</span><span class="metric-value pending" id="copy-m-pending">0</span></div>
+        <div class="metric"><span class="metric-label">已上架</span><span class="metric-value" id="copy-m-launched">0</span></div>
+      </section>
+
+      <!-- 表單 -->
+      <section class="card form-card">
+        <div class="card-head">
+          <h2 id="copy-form-title">新增工單</h2>
+          <span class="form-hint" id="copy-form-msg"></span>
+        </div>
+
+        <div class="form-grid">
+          <label class="field" style="grid-column: span 3">
+            <span>撰寫完成日期</span>
+            <input type="date" id="f-copy-writingDate" />
+          </label>
+          <label class="field" style="grid-column: span 3">
+            <span>文案確認日期</span>
+            <input type="date" id="f-copy-copyConfirmedDate" />
+          </label>
+          <label class="field" style="grid-column: span 3">
+            <span>文案圖完成日期</span>
+            <input type="date" id="f-copy-imageCompleted" />
+          </label>
+          <label class="field" style="grid-column: span 3">
+            <span>作業時間 (h)</span>
+            <input type="number" id="f-copy-hours" step="0.5" min="0" placeholder="0" />
+          </label>
+
+          <label class="field" style="grid-column: span 3">
+            <span>品牌</span>
+            <input type="text" id="f-copy-brand" placeholder="例：myFirst" />
+          </label>
+          <label class="field" style="grid-column: span 5">
+            <span>品名 *</span>
+            <input type="text" id="f-copy-productName" placeholder="例：藍牙耳機 X1" />
+          </label>
+          <label class="field" style="grid-column: span 2">
+            <span>製作人</span>
+            <select id="f-copy-creator">
+              <option value="">未指派</option>
+            </select>
+          </label>
+          <label class="field" style="grid-column: span 2">
+            <span>文圖優先順序</span>
+            <input type="text" id="f-copy-priority" placeholder="例：1 / 2 / 3" />
+          </label>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn btn-ghost" onclick="cancelCopyEdit()" id="copy-cancel-btn" style="display:none">取消編輯</button>
+          <button class="btn btn-ghost" onclick="openPeopleManager('creator')">管理製作人</button>
+          <button class="btn btn-primary" onclick="submitCopyTask()" id="copy-submit-btn">新增工單</button>
+        </div>
+      </section>
+
+      <!-- 篩選列 -->
+      <div class="filter-bar">
+        <input type="text" id="copy-search" placeholder="搜尋品牌、品名、製作人..." oninput="onCopyFilterChange()" />
+        <select id="copy-filter-month" onchange="onCopyFilterChange()">
+          <option value="">全部月份</option>
+        </select>
+        <select id="copy-filter-status" onchange="onCopyFilterChange()">
+          <option value="">全部狀態</option>
+          <option value="pending">進行中</option>
+          <option value="launched">已上架</option>
+        </select>
+        <select id="copy-filter-creator" onchange="onCopyFilterChange()">
+          <option value="">全部製作人</option>
+        </select>
+        <div class="view-toggle">
+          <button class="view-btn active" data-view="table" onclick="setCopyView('table')">表格</button>
+          <button class="view-btn" data-view="calendar" onclick="setCopyView('calendar')">日曆</button>
+        </div>
+      </div>
+
+      <!-- 表格 -->
+      <section id="copy-view-table">
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width:90px" onclick="sortCopyBy('brand')">品牌</th>
+                <th onclick="sortCopyBy('productName')">品名</th>
+                <th class="col-date" onclick="sortCopyBy('writingDate')">撰寫</th>
+                <th class="col-date" onclick="sortCopyBy('copyConfirmedDate')">確認</th>
+                <th class="col-date" onclick="sortCopyBy('imageCompleted')">圖完成</th>
+                <th style="width:60px">上架</th>
+                <th style="width:110px">製作人</th>
+                <th style="width:80px">優先</th>
+                <th style="width:60px">時數</th>
+                <th style="width:50px"></th>
+              </tr>
+            </thead>
+            <tbody id="copy-table-body"></tbody>
+          </table>
+          <div id="copy-table-empty" class="empty-state" style="display:none">
+            <p>還沒有工單，從上方表單新增第一筆吧</p>
+          </div>
+        </div>
+        <div id="copy-pagination" class="pagination"></div>
+      </section>
+
+      <!-- 日曆 -->
+      <section class="calendar" id="copy-view-calendar" style="display:none">
+        <div class="calendar-header">
+          <button class="btn btn-ghost" onclick="changeCopyCalendarMonth(-1)" title="上個月">‹</button>
+          <h3 id="copy-calendar-title">2026年4月</h3>
+          <button class="btn btn-ghost" onclick="changeCopyCalendarMonth(1)" title="下個月">›</button>
+          <button class="btn btn-ghost" onclick="goToCopyCurrentMonth()" style="margin-left:auto">今天</button>
+        </div>
+        <div class="calendar-grid" id="copy-calendar-grid"></div>
+        <p class="calendar-note">📅 工單依「撰寫完成日期」放在對應日期 · 點工單可看詳細資料</p>
+      </section>
+
+      <!-- 統計 -->
+      <section class="charts">
+        <div class="card chart-card">
+          <h3>各製作人累計工時 <span class="chart-sub" id="copy-hours-month-label"></span></h3>
+          <div class="chart-wrap"><canvas id="copy-hours-chart"></canvas></div>
+        </div>
+        <div class="card chart-card">
+          <h3>各製作人完成件數 <span class="chart-sub" id="copy-count-month-label"></span></h3>
+          <div class="chart-wrap"><canvas id="copy-count-chart"></canvas></div>
+        </div>
+      </section>
+
+      <footer class="foot">資料儲存於 Google Sheets · 跨裝置同步</footer>
+    </div>
+  </section>
+  <!-- ============ /文案派工區塊 ============ -->
 
   <!-- 人員管理 Modal -->
   <div class="modal-overlay" id="people-modal" onclick="if(event.target===this) closePeopleManager()">
@@ -308,5 +498,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="app.js"></script>
+  <script src="copy.js"></script>
 </body>
 </html>
