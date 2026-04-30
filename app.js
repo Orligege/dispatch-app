@@ -683,7 +683,7 @@ function renderDetailView(id) {
       <dt>BN 內容</dt><dd>${escapeHtml(t.bnContent) || '—'}</dd>
       <dt>檔案路徑</dt><dd>
         <textarea class="modal-path-input" rows="2"
-                  placeholder="點此輸入檔案路徑（可換行）..."
+                  placeholder="點此輸入檔案路徑..."
                   onblur="updateField(${id}, 'filePath', this.value)">${escapeHtml(t.filePath)}</textarea>
       </dd>
       <dt>派工者</dt><dd>${escapeHtml(t.dispatcher) || '<span class="unassigned">未指定</span>'}</dd>
