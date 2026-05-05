@@ -5,6 +5,86 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BN 派工管理系統</title>
 
+  <!-- ============ 密碼門禁（請改下方 PASSWORD） ============ -->
+  <script>
+  (function() {
+    const PASSWORD = "10101681010";   // ← 改成你要的密碼
+    const KEY = "bn_auth_ok";
+
+    // 已驗證過就直接放行
+    if (sessionStorage.getItem(KEY) === "1") return;
+
+    // 先把整頁藏起來，避免內容閃一下
+    document.documentElement.style.visibility = "hidden";
+
+    document.addEventListener("DOMContentLoaded", function() {
+      const overlay = document.createElement("div");
+      overlay.innerHTML = `
+        <style>
+          #auth-gate {
+            position: fixed; inset: 0; z-index: 99999;
+            background: #0a0a0a;
+            display: flex; align-items: center; justify-content: center;
+            font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+          }
+          #auth-gate .box {
+            background: #161616; border: 1px solid #2a2a2a;
+            padding: 36px 32px; border-radius: 16px;
+            width: 320px; text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,.5);
+          }
+          #auth-gate h1 { color: #fff; font-size: 20px; margin: 0 0 6px; font-weight: 600; }
+          #auth-gate p  { color: #888; font-size: 13px; margin: 0 0 22px; }
+          #auth-gate input {
+            width: 100%; box-sizing: border-box;
+            padding: 11px 13px; margin-bottom: 12px;
+            background: #0a0a0a; color: #fff;
+            border: 1px solid #2a2a2a; border-radius: 8px;
+            font-size: 14px; font-family: inherit;
+          }
+          #auth-gate input:focus { outline: none; border-color: #2563eb; }
+          #auth-gate button {
+            width: 100%; padding: 11px;
+            background: #2563eb; color: #fff;
+            border: 0; border-radius: 8px;
+            font-size: 14px; font-weight: 600; cursor: pointer;
+          }
+          #auth-gate button:hover { background: #1d4fd8; }
+          #auth-gate .err { color: #dc2626; font-size: 12px; margin: 8px 0 0; min-height: 16px; }
+        </style>
+        <div id="auth-gate">
+          <div class="box">
+            <h1>BN 派工系統</h1>
+            <p>請輸入存取密碼</p>
+            <input type="password" id="auth-pw" autofocus autocomplete="off" />
+            <button id="auth-go">進入</button>
+            <div class="err" id="auth-err"></div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      document.documentElement.style.visibility = "visible";
+
+      const pw  = document.getElementById("auth-pw");
+      const err = document.getElementById("auth-err");
+
+      function check() {
+        if (pw.value === PASSWORD) {
+          sessionStorage.setItem(KEY, "1");
+          overlay.remove();
+        } else {
+          err.textContent = "密碼錯誤";
+          pw.value = ""; pw.focus();
+        }
+      }
+
+      document.getElementById("auth-go").onclick = check;
+      pw.addEventListener("keydown", e => { if (e.key === "Enter") check(); });
+    });
+  })();
+  </script>
+  <!-- ============ /密碼門禁 ============ -->
+
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
