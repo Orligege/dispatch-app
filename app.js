@@ -7,7 +7,7 @@
 const API_URL = 'https://script.google.com/macros/s/AKfycbyd-4qkCT8uiuOHI9ogAxHEJiwC7HE_hB7qv7HSN_Aw-EgHERLXENstweniDHE368c-/exec';
 
 // ⭐ API Token（要跟 Apps Script 那邊設定的一致）
-const API_TOKEN = 'jXJep5hy82PpeUTjtZoqE1jrvBzyMfhXXfRL9niKjmIZiaTF15L0JeycFRxH7C_E';
+const API_TOKEN = '改成你自己的長亂碼_例如_x9k2mP7vQ4nR8tL3wY6zB1jH5fA0sD';
 
 const STORAGE_KEY = 'bn_dispatch_cloud_v1';
 const PAGE_SIZE = 50;
@@ -1397,7 +1397,7 @@ async function refreshFromCloud() {
 // ---------- 檢視切換 / 排序 / 篩選 ----------
 function setView(v) {
   currentView = v;
-  document.querySelectorAll('.view-btn').forEach(b => {
+  document.querySelectorAll('#section-bn .view-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.view === v);
   });
   document.getElementById('view-table').style.display = v === 'table' ? '' : 'none';
