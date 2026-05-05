@@ -569,7 +569,7 @@
   <div class="modal-overlay" id="export-modal" onclick="if(event.target===this) closeExportModal()">
     <div class="modal">
       <div class="modal-head">
-        <h2>匯出 Excel</h2>
+        <h2 id="export-modal-title">匯出 Excel</h2>
         <button class="icon-x" onclick="closeExportModal()">×</button>
       </div>
       <div class="modal-body">
@@ -587,13 +587,96 @@
           </label>
           <label class="export-opt">
             <input type="radio" name="export-range" value="month" />
-            <span>指定月份</span>
+            <span>指定月份（派工日）</span>
             <select id="export-month-pick" onclick="document.querySelector('input[name=export-range][value=month]').checked = true" onchange="document.querySelector('input[name=export-range][value=month]').checked = true"></select>
           </label>
+          <label class="export-opt" style="flex-wrap:wrap; gap: 6px;">
+            <input type="radio" name="export-range" value="dateRange" />
+            <span>自訂時間區間（依完成日）</span>
+            <div style="display:flex; align-items:center; gap:6px; width:100%; padding-left: 24px; margin-top: 4px;">
+              <select id="export-date-from" onclick="document.querySelector('input[name=export-range][value=dateRange]').checked = true" onchange="document.querySelector('input[name=export-range][value=dateRange]').checked = true" style="flex:1;"></select>
+              <span style="color: var(--text-muted)">→</span>
+              <select id="export-date-to" onclick="document.querySelector('input[name=export-range][value=dateRange]').checked = true" onchange="document.querySelector('input[name=export-range][value=dateRange]').checked = true" style="flex:1;"></select>
+            </div>
+          </label>
         </div>
+
+        <!-- 進一步篩選：大分類（BN 才顯示，可疊加在任何範圍上）-->
+        <div id="export-major-section" style="margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border);">
+          <p style="font-size:13px; color: var(--text-muted); margin: 0 0 10px;">
+            進一步篩選大分類 <span style="font-size:11px;">（可複選，留空 = 不篩選）</span>
+          </p>
+          <div id="export-major-checks" style="display:flex; gap:14px; flex-wrap:wrap;">
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" class="export-major-cb" value="電商" />
+              <span>電商</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" class="export-major-cb" value="通路" />
+              <span>通路</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" class="export-major-cb" value="行銷" />
+              <span>行銷</span>
+            </label>
+          </div>
+        </div>
+
         <div style="display:flex; gap:8px; justify-content:flex-end; margin-top: 18px;">
           <button class="btn btn-ghost" onclick="closeExportModal()">取消</button>
           <button class="btn btn-primary" onclick="doExportSelected()">匯出</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 匯入預覽 Modal -->
+  <div class="modal-overlay" id="import-preview-modal" onclick="if(event.target===this) closeImportPreview()">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>匯入預覽</h2>
+        <button class="icon-x" onclick="closeImportPreview()">×</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:13px; color: var(--text-muted); margin: 0 0 14px;" id="import-preview-filename">檔案：—</p>
+
+        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px;">
+          <div style="padding: 14px; border-radius: 10px; background: rgba(34,197,94,.1); border:1px solid rgba(34,197,94,.3); text-align:center;">
+            <div style="font-size: 24px; font-weight: 700; color: #22c55e;" id="import-stat-new">0</div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-top:4px;">✅ 新增</div>
+          </div>
+          <div style="padding: 14px; border-radius: 10px; background: rgba(217,119,6,.1); border:1px solid rgba(217,119,6,.3); text-align:center;">
+            <div style="font-size: 24px; font-weight: 700; color: #d97706;" id="import-stat-dup">0</div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-top:4px;">⚠️ 重複</div>
+          </div>
+          <div style="padding: 14px; border-radius: 10px; background: rgba(220,38,38,.1); border:1px solid rgba(220,38,38,.3); text-align:center;">
+            <div style="font-size: 24px; font-weight: 700; color: #dc2626;" id="import-stat-err">0</div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-top:4px;">❌ 錯誤</div>
+          </div>
+        </div>
+
+        <div id="import-error-list" style="max-height: 120px; overflow-y: auto; margin-bottom: 14px; display:none;">
+          <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">錯誤明細：</div>
+          <ul id="import-error-ul" style="margin: 0; padding-left: 18px; font-size: 12px; color: #dc2626;"></ul>
+        </div>
+
+        <div id="import-dup-section" style="margin-bottom: 14px; display:none;">
+          <div style="font-size: 13px; margin-bottom: 8px;">偵測到重複資料，要怎麼處理？</div>
+          <div style="display:flex; flex-direction:column; gap: 6px;">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding: 8px 12px; border-radius: 8px; background: var(--bg-2); font-size: 13px;">
+              <input type="radio" name="import-dup-action" value="skip" checked />
+              <span>跳過重複（只匯入新的）</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding: 8px 12px; border-radius: 8px; background: var(--bg-2); font-size: 13px;">
+              <input type="radio" name="import-dup-action" value="all" />
+              <span>全部匯入（重複的也建立新筆）</span>
+            </label>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+          <button class="btn btn-ghost" onclick="closeImportPreview()">取消</button>
+          <button class="btn btn-primary" id="import-confirm-btn" onclick="confirmImport()">確認匯入</button>
         </div>
       </div>
     </div>

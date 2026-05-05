@@ -866,6 +866,126 @@ function openImportHistorySmart() {
   else openImportHistory();
 }
 
+// ---------- 匯入分析（共用）----------
+// 計算「YYYY-MM」格式的月份（從日期欄位）
+function monthOf(dateStr) {
+  if (!dateStr) return '';
+  const m = String(dateStr).match(/^(\d{4})-(\d{2})/);
+  return m ? `${m[1]}-${m[2]}` : '';
+}
+
+// 比對月份範圍（含頭含尾）
+function inMonthRange(monthStr, fromMonth, toMonth) {
+  if (!monthStr) return false;
+  return monthStr >= fromMonth && monthStr <= toMonth;
+}
+
+// 把 task 列表轉成「重複偵測 key」的 Set，用於匯入時比對
+function buildDupKeySet(tasks, dupKeyFn) {
+  const set = new Set();
+  for (const t of tasks) {
+    const k = dupKeyFn(t);
+    if (k) set.add(k);
+  }
+  return set;
+}
+
+// 分析匯入資料：分類為 valid / duplicates / errors
+// candidates: 已解析的 task 物件陣列
+// existingKeys: Set，已存在的 dup key
+// dupKeyFn: (task) => string，產生 dup key 的函式
+// validateFn: (task, idx) => null | string（傳回錯誤訊息）
+function analyzeImport(candidates, existingKeys, dupKeyFn, validateFn) {
+  const valid = [];      // 完全沒問題、不重複
+  const duplicates = []; // 跟雲端重複
+  const errors = [];     // 必填漏掉等錯誤 [{rowNum, reason}]
+  const seenInFile = new Set(); // 同檔案內也算重複
+
+  candidates.forEach((task, idx) => {
+    const rowNum = idx + 2; // Excel 第 1 列是表頭，所以資料從第 2 列開始
+    const err = validateFn(task, idx);
+    if (err) {
+      errors.push({ rowNum, reason: err });
+      return;
+    }
+    const key = dupKeyFn(task);
+    if (key && (existingKeys.has(key) || seenInFile.has(key))) {
+      duplicates.push({ rowNum, task });
+    } else {
+      valid.push(task);
+      if (key) seenInFile.add(key);
+    }
+  });
+
+  return { valid, duplicates, errors };
+}
+
+// 開啟匯入預覽 modal
+// analysis: analyzeImport 回傳值
+// fileInfo: { filename, fileSize, fileBase64, rowCount, originalRows }
+// onConfirm: (action: 'skip' | 'all') => Promise<void>
+let pendingImportConfirm = null;
+function showImportPreview(analysis, fileInfo, onConfirm) {
+  document.getElementById('import-preview-filename').textContent = `檔案：${fileInfo.filename}（${fileInfo.rowCount} 列）`;
+  document.getElementById('import-stat-new').textContent = analysis.valid.length;
+  document.getElementById('import-stat-dup').textContent = analysis.duplicates.length;
+  document.getElementById('import-stat-err').textContent = analysis.errors.length;
+
+  // 錯誤明細
+  const errSection = document.getElementById('import-error-list');
+  const errUl = document.getElementById('import-error-ul');
+  if (analysis.errors.length) {
+    errUl.innerHTML = analysis.errors.slice(0, 10).map(e =>
+      `<li>第 ${e.rowNum} 列：${escapeHtml(e.reason)}</li>`
+    ).join('') + (analysis.errors.length > 10 ? `<li>...還有 ${analysis.errors.length - 10} 筆</li>` : '');
+    errSection.style.display = '';
+  } else {
+    errSection.style.display = 'none';
+  }
+
+  // 重複處理選項
+  const dupSection = document.getElementById('import-dup-section');
+  if (analysis.duplicates.length) {
+    dupSection.style.display = '';
+    document.querySelector('input[name=import-dup-action][value=skip]').checked = true;
+  } else {
+    dupSection.style.display = 'none';
+  }
+
+  // 確認按鈕的可用狀態
+  const confirmBtn = document.getElementById('import-confirm-btn');
+  const totalToImport = analysis.valid.length + analysis.duplicates.length;
+  if (totalToImport === 0) {
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = '沒有可匯入的資料';
+  } else {
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = '確認匯入';
+  }
+
+  pendingImportConfirm = { analysis, fileInfo, onConfirm };
+  document.getElementById('import-preview-modal').classList.add('open');
+}
+
+function closeImportPreview() {
+  document.getElementById('import-preview-modal').classList.remove('open');
+  pendingImportConfirm = null;
+}
+
+async function confirmImport() {
+  if (!pendingImportConfirm) return;
+  const { analysis, onConfirm } = pendingImportConfirm;
+  const action = analysis.duplicates.length
+    ? document.querySelector('input[name=import-dup-action]:checked').value
+    : 'skip';
+  closeImportPreview();
+  await onConfirm(action);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 const EXCEL_HEADERS = ['派工日期', '大分類', 'BN類別', 'BN尺寸', 'BN內容', '檔案路徑', '派工者', '製作人', '需完成日', '完成日', '作業時間', '狀態'];
 
 function tasksToRows(tasks) {
@@ -913,14 +1033,17 @@ function downloadTemplate() {
 function exportExcel() {
   const all = state.tasks.length;
   const filtered = getVisibleTasks().length;
+  document.getElementById('export-modal-title').textContent = '匯出 Excel - BN派工';
   document.getElementById('export-count-all').textContent = `${all} 筆`;
   document.getElementById('export-count-filtered').textContent = `${filtered} 筆`;
-  const monthsSet = new Set();
+
+  // 派工月份下拉
+  const dispatchMonths = new Set();
   state.tasks.forEach(t => {
     const m = getMonthOf(t.dispatchDate);
-    if (m) monthsSet.add(m);
+    if (m) dispatchMonths.add(m);
   });
-  const sortedMonths = [...monthsSet].sort().reverse();
+  const sortedMonths = [...dispatchMonths].sort().reverse();
   const monthSelect = document.getElementById('export-month-pick');
   if (sortedMonths.length === 0) {
     monthSelect.innerHTML = '<option value="">無資料</option>';
@@ -930,6 +1053,30 @@ function exportExcel() {
       return `<option value="${m}">${formatMonth(m)}（${cnt} 筆）</option>`;
     }).join('');
   }
+
+  // 完成日月份下拉（給「自訂時間區間」用）
+  const completedMonths = new Set();
+  state.tasks.forEach(t => {
+    const m = monthOf(t.completedDate);
+    if (m) completedMonths.add(m);
+  });
+  const completedSorted = [...completedMonths].sort();
+  const fromSel = document.getElementById('export-date-from');
+  const toSel = document.getElementById('export-date-to');
+  if (completedSorted.length === 0) {
+    fromSel.innerHTML = '<option value="">無完成日資料</option>';
+    toSel.innerHTML = '<option value="">無完成日資料</option>';
+  } else {
+    const opts = completedSorted.map(m => `<option value="${m}">${formatMonth(m)}</option>`).join('');
+    fromSel.innerHTML = opts;
+    toSel.innerHTML = opts;
+    toSel.value = completedSorted[completedSorted.length - 1];
+  }
+
+  // 大分類疊加篩選（BN 顯示，每次開啟先清空）
+  document.getElementById('export-major-section').style.display = '';
+  document.querySelectorAll('.export-major-cb').forEach(cb => cb.checked = false);
+
   document.querySelector('input[name=export-range][value=all]').checked = true;
   document.getElementById('export-modal').classList.add('open');
 }
@@ -938,21 +1085,54 @@ function closeExportModal() {
 }
 function doExportSelected() {
   const range = document.querySelector('input[name=export-range]:checked').value;
+
+  // 判斷目前是 BN 還是文案 model
+  const isCopy = activeSection === 'copy';
+  const sourceTasks = isCopy ? state.copyTasks : state.tasks;
+  const visibleTasks = isCopy ? getVisibleCopyTasks() : getVisibleTasks();
+  const completedField = isCopy ? 'imageCompleted' : 'completedDate';
+  const dispatchField = 'dispatchDate';
+  const filePrefix = isCopy ? '文案派工' : 'BN派工';
+
+  // === Step 1：依範圍取得基底資料集 ===
   let tasks, suffix;
   if (range === 'all') {
-    tasks = state.tasks;
+    tasks = sourceTasks;
     suffix = todayStr();
   } else if (range === 'filtered') {
-    tasks = getVisibleTasks();
+    tasks = visibleTasks;
     suffix = todayStr() + '_篩選';
   } else if (range === 'month') {
     const month = document.getElementById('export-month-pick').value;
     if (!month) { alert('請先選擇月份'); return; }
-    tasks = state.tasks.filter(t => getMonthOf(t.dispatchDate) === month);
+    tasks = sourceTasks.filter(t => monthOf(t[dispatchField]) === month);
     suffix = month;
+  } else if (range === 'dateRange') {
+    const from = document.getElementById('export-date-from').value;
+    const to = document.getElementById('export-date-to').value;
+    if (!from || !to) { alert('請先選擇起訖月份'); return; }
+    if (from > to) { alert('起始月份不能晚於結束月份'); return; }
+    tasks = sourceTasks.filter(t => inMonthRange(monthOf(t[completedField]), from, to));
+    suffix = (from === to) ? `${from}_完成` : `${from}_to_${to}_完成`;
   }
-  if (!tasks || !tasks.length) { alert('沒有資料可以匯出'); return; }
-  doExport(tasks, `BN派工_${suffix}.xlsx`);
+
+  // === Step 2：再疊加大分類篩選（BN 才有；勾了才篩，沒勾全部留下）===
+  if (!isCopy) {
+    const pickedMajors = [...document.querySelectorAll('.export-major-cb:checked')].map(cb => cb.value);
+    if (pickedMajors.length > 0 && pickedMajors.length < 3) {
+      tasks = tasks.filter(t => pickedMajors.includes(t.majorCategory));
+      suffix += '_' + pickedMajors.join('-');
+    }
+  }
+
+  if (!tasks || !tasks.length) { alert('套用篩選後沒有符合的資料'); return; }
+
+  // 依 model 呼叫對應的下載函式
+  if (isCopy) {
+    doExportCopy(tasks, `${filePrefix}_${suffix}.xlsx`);
+  } else {
+    doExport(tasks, `${filePrefix}_${suffix}.xlsx`);
+  }
   closeExportModal();
 }
 function doExport(tasks, filename) {
@@ -992,8 +1172,15 @@ function statusFromText(text) {
   return 'pending';
 }
 
+// BN 重複偵測 key：大分類+BN類別+BN尺寸+BN內容
+function bnDupKey(t) {
+  const norm = s => String(s || '').trim();
+  return [norm(t.majorCategory), norm(t.bnCategory), norm(t.bnSize), norm(t.bnContent)].join('|');
+}
+
 async function importExcel(event) {
   const file = event.target.files[0];
+  event.target.value = ''; // 立刻清空，避免下次選同名檔案不觸發
   if (!file) return;
   const reader = new FileReader();
   reader.onload = async e => {
@@ -1010,11 +1197,10 @@ async function importExcel(event) {
       if (!hasCategory) {
         if (!confirm('找不到「BN類別」欄位，是否仍要嘗試匯入？')) return;
       }
-      if (!confirm(`將匯入 ${rows.length} 筆資料到雲端，繼續？`)) return;
 
       const newDispatchers = new Set();
       const newCreators = new Set();
-      const tasksToImport = rows.map(row => {
+      const candidates = rows.map(row => {
         const get = (...keys) => {
           for (const k of keys) if (row[k] !== undefined && row[k] !== '') return row[k];
           return '';
@@ -1050,45 +1236,75 @@ async function importExcel(event) {
         };
       });
 
-      setSyncStatus('syncing');
-      // 先把新人員加到雲端
-      for (const n of newDispatchers) {
-        await api('addPerson', { type: 'dispatcher', name: n });
-        state.dispatchers.push(n);
-      }
-      for (const n of newCreators) {
-        await api('addPerson', { type: 'creator', name: n });
-        state.creators.push(n);
-      }
-      // 批次匯入工單
-      const result = await api('bulkImport', { payload: tasksToImport });
-      if (result.tasks) state.tasks.push(...result.tasks);
+      // 分析重複/錯誤
+      const existingKeys = buildDupKeySet(state.tasks, bnDupKey);
+      const validate = (t) => {
+        if (!t.bnContent && !t.bnCategory) return '缺少 BN 內容與 BN 類別';
+        return null;
+      };
+      const analysis = analyzeImport(candidates, existingKeys, bnDupKey, validate);
 
-      // 紀錄這次匯入到本地（每人各自）
       const fileBase64 = arrayBufferToBase64(arrayBuffer);
-      state.importHistory.unshift({
+      const fileInfo = {
         filename: file.name,
-        importedAt: new Date().toISOString(),
-        rowCount: rows.length,
         fileSize: file.size,
         fileBase64,
-      });
-      if (state.importHistory.length > 10) state.importHistory = state.importHistory.slice(0, 10);
+        rowCount: rows.length,
+      };
 
-      saveLocal();
-      refreshDropdowns();
-      refreshMonthFilter();
-      render();
-      setSyncStatus('ok');
-      alert(`成功匯入 ${rows.length} 筆資料到雲端`);
+      // 開預覽 modal
+      showImportPreview(analysis, fileInfo, async (action) => {
+        const tasksToImport = (action === 'all')
+          ? [...analysis.valid, ...analysis.duplicates.map(d => d.task)]
+          : analysis.valid;
+
+        if (!tasksToImport.length) { alert('沒有可匯入的資料'); return; }
+
+        try {
+          setSyncStatus('syncing');
+          // 先把新人員加到雲端
+          for (const n of newDispatchers) {
+            await api('addPerson', { type: 'dispatcher', name: n });
+            state.dispatchers.push(n);
+          }
+          for (const n of newCreators) {
+            await api('addPerson', { type: 'creator', name: n });
+            state.creators.push(n);
+          }
+          // 批次匯入工單
+          const result = await api('bulkImport', { payload: tasksToImport });
+          if (result.tasks) state.tasks.push(...result.tasks);
+
+          // 紀錄這次匯入
+          state.importHistory.unshift({
+            filename: file.name,
+            importedAt: new Date().toISOString(),
+            rowCount: tasksToImport.length,
+            fileSize: file.size,
+            fileBase64,
+          });
+          if (state.importHistory.length > 10) state.importHistory = state.importHistory.slice(0, 10);
+
+          saveLocal();
+          refreshDropdowns();
+          refreshMonthFilter();
+          render();
+          setSyncStatus('ok');
+
+          const skipped = analysis.duplicates.length + analysis.errors.length - (action === 'all' ? analysis.duplicates.length : 0);
+          alert(`匯入完成！\n✅ 新增 ${tasksToImport.length} 筆\n${skipped > 0 ? `⏭️ 略過 ${skipped} 筆` : ''}`);
+        } catch (err) {
+          console.error(err);
+          setSyncStatus('error');
+          alert('匯入失敗：' + err.message);
+        }
+      });
     } catch (err) {
       console.error(err);
-      setSyncStatus('error');
-      alert('匯入失敗：' + err.message);
+      alert('解析 Excel 失敗：' + err.message);
     }
   };
   reader.readAsArrayBuffer(file);
-  event.target.value = '';
 }
 
 function arrayBufferToBase64(buffer) {

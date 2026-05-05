@@ -711,18 +711,76 @@ function downloadCopyTemplate() {
   XLSX.writeFile(wb, '文案派工_範本.xlsx');
 }
 
+// 文案匯出：開啟共用 modal（不顯示大分類選項）
 function exportCopyExcel() {
-  if (!state.copyTasks.length) { alert('沒有資料可以匯出'); return; }
-  const rows = copyTasksToRows(state.copyTasks);
+  const all = state.copyTasks.length;
+  const filtered = (typeof getVisibleCopyTasks === 'function' ? getVisibleCopyTasks() : state.copyTasks).length;
+  document.getElementById('export-modal-title').textContent = '匯出 Excel - 文案派工';
+  document.getElementById('export-count-all').textContent = `${all} 筆`;
+  document.getElementById('export-count-filtered').textContent = `${filtered} 筆`;
+
+  // 派工月份下拉
+  const dispatchMonths = new Set();
+  state.copyTasks.forEach(t => {
+    const m = monthOf(t.dispatchDate);
+    if (m) dispatchMonths.add(m);
+  });
+  const sortedMonths = [...dispatchMonths].sort().reverse();
+  const monthSelect = document.getElementById('export-month-pick');
+  if (sortedMonths.length === 0) {
+    monthSelect.innerHTML = '<option value="">無資料</option>';
+  } else {
+    monthSelect.innerHTML = sortedMonths.map(m => {
+      const cnt = state.copyTasks.filter(t => monthOf(t.dispatchDate) === m).length;
+      return `<option value="${m}">${m}（${cnt} 筆）</option>`;
+    }).join('');
+  }
+
+  // 完成日（imageCompleted）月份下拉
+  const completedMonths = new Set();
+  state.copyTasks.forEach(t => {
+    const m = monthOf(t.imageCompleted);
+    if (m) completedMonths.add(m);
+  });
+  const completedSorted = [...completedMonths].sort();
+  const fromSel = document.getElementById('export-date-from');
+  const toSel = document.getElementById('export-date-to');
+  if (completedSorted.length === 0) {
+    fromSel.innerHTML = '<option value="">無完成日資料</option>';
+    toSel.innerHTML = '<option value="">無完成日資料</option>';
+  } else {
+    const opts = completedSorted.map(m => `<option value="${m}">${m}</option>`).join('');
+    fromSel.innerHTML = opts;
+    toSel.innerHTML = opts;
+    toSel.value = completedSorted[completedSorted.length - 1];
+  }
+
+  // 文案沒有大分類，隱藏該區塊
+  document.getElementById('export-major-section').style.display = 'none';
+
+  document.querySelector('input[name=export-range][value=all]').checked = true;
+  document.getElementById('export-modal').classList.add('open');
+}
+
+// 文案實際下載
+function doExportCopy(tasks, filename) {
+  const rows = copyTasksToRows(tasks);
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.json_to_sheet(rows, { header: COPY_EXCEL_HEADERS });
   ws['!cols'] = COPY_EXCEL_HEADERS.map(() => ({ wch: 14 }));
   XLSX.utils.book_append_sheet(wb, ws, '文案派工');
-  XLSX.writeFile(wb, `文案派工_${todayStr()}.xlsx`);
+  XLSX.writeFile(wb, filename);
+}
+
+// 文案重複偵測 key：品牌+品名
+function copyDupKey(t) {
+  const norm = s => String(s || '').trim();
+  return [norm(t.brand), norm(t.productName)].join('|');
 }
 
 async function importCopyExcel(event) {
   const file = event.target.files[0];
+  event.target.value = '';
   if (!file) return;
   const reader = new FileReader();
   reader.onload = async e => {
@@ -732,10 +790,9 @@ async function importCopyExcel(event) {
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
       if (!rows.length) { alert('Excel 沒有資料'); return; }
-      if (!confirm(`將匯入 ${rows.length} 筆資料到雲端，繼續？`)) return;
 
       const newCreators = new Set();
-      const tasksToImport = rows.map(row => {
+      const candidates = rows.map(row => {
         const get = (...keys) => {
           for (const k of keys) if (row[k] !== undefined && row[k] !== '') return row[k];
           return '';
@@ -757,38 +814,68 @@ async function importCopyExcel(event) {
         };
       });
 
-      setSyncStatus('syncing');
-      for (const n of newCreators) {
-        await api('addPerson', { type: 'creator', name: n });
-        state.creators.push(n);
-      }
-      const result = await api('bulkImport', { sheet: 'copy_tasks', payload: tasksToImport });
-      if (result.tasks) state.copyTasks.push(...result.tasks);
+      // 分析重複/錯誤
+      const existingKeys = buildDupKeySet(state.copyTasks, copyDupKey);
+      const validate = (t) => {
+        if (!t.brand && !t.productName) return '缺少品牌與品名';
+        if (!t.productName) return '缺少品名';
+        return null;
+      };
+      const analysis = analyzeImport(candidates, existingKeys, copyDupKey, validate);
 
       const fileBase64 = arrayBufferToBase64(arrayBuffer);
-      state.copyImportHistory.unshift({
+      const fileInfo = {
         filename: file.name,
-        importedAt: new Date().toISOString(),
-        rowCount: rows.length,
         fileSize: file.size,
         fileBase64,
-      });
-      if (state.copyImportHistory.length > 10) state.copyImportHistory = state.copyImportHistory.slice(0, 10);
+        rowCount: rows.length,
+      };
 
-      saveLocal();
-      refreshDropdowns();
-      refreshCopyMonthFilter();
-      renderCopy();
-      setSyncStatus('ok');
-      alert(`成功匯入 ${rows.length} 筆資料到雲端`);
+      showImportPreview(analysis, fileInfo, async (action) => {
+        const tasksToImport = (action === 'all')
+          ? [...analysis.valid, ...analysis.duplicates.map(d => d.task)]
+          : analysis.valid;
+
+        if (!tasksToImport.length) { alert('沒有可匯入的資料'); return; }
+
+        try {
+          setSyncStatus('syncing');
+          for (const n of newCreators) {
+            await api('addPerson', { type: 'creator', name: n });
+            state.creators.push(n);
+          }
+          const result = await api('bulkImport', { sheet: 'copy_tasks', payload: tasksToImport });
+          if (result.tasks) state.copyTasks.push(...result.tasks);
+
+          state.copyImportHistory.unshift({
+            filename: file.name,
+            importedAt: new Date().toISOString(),
+            rowCount: tasksToImport.length,
+            fileSize: file.size,
+            fileBase64,
+          });
+          if (state.copyImportHistory.length > 10) state.copyImportHistory = state.copyImportHistory.slice(0, 10);
+
+          saveLocal();
+          refreshDropdowns();
+          if (typeof refreshCopyMonthFilter === 'function') refreshCopyMonthFilter();
+          renderCopy();
+          setSyncStatus('ok');
+
+          const skipped = analysis.duplicates.length + analysis.errors.length - (action === 'all' ? analysis.duplicates.length : 0);
+          alert(`匯入完成！\n✅ 新增 ${tasksToImport.length} 筆\n${skipped > 0 ? `⏭️ 略過 ${skipped} 筆` : ''}`);
+        } catch (err) {
+          console.error(err);
+          setSyncStatus('error');
+          alert('匯入失敗：' + err.message);
+        }
+      });
     } catch (err) {
       console.error(err);
-      setSyncStatus('error');
-      alert('匯入失敗：' + err.message);
+      alert('解析 Excel 失敗：' + err.message);
     }
   };
   reader.readAsArrayBuffer(file);
-  event.target.value = '';
 }
 
 // ---------- 匯入紀錄 ----------
