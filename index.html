@@ -8,7 +8,7 @@
   <!-- ============ 密碼門禁（請改下方 PASSWORD） ============ -->
   <script>
   (function() {
-    const PASSWORD = "10101681010";   // ← 改成你要的密碼
+    const PASSWORD = "你設定的密碼";   // ← 改成你要的密碼
     const KEY = "bn_auth_ok";
 
     // 已驗證過就直接放行
@@ -122,43 +122,28 @@
         <span class="chevron">▾</span>
       </button>
       <div class="sidebar-submenu" id="excel-submenu">
-        <button class="sidebar-item sub" onclick="switchSection('bn'); document.getElementById('import-xlsx').click()">
+        <button class="sidebar-item sub" onclick="document.getElementById('import-xlsx-smart').click()">
           <span class="sidebar-icon">📥</span>
-          <span>匯入 BN 派工</span>
+          <span>匯入 Excel</span>
         </button>
-        <button class="sidebar-item sub" onclick="switchSection('copy'); document.getElementById('copy-import-xlsx').click()">
-          <span class="sidebar-icon">📥</span>
-          <span>匯入 文案派工</span>
-        </button>
-        <button class="sidebar-item sub" onclick="exportExcel(); closeSidebar()">
+        <button class="sidebar-item sub" onclick="exportExcelSmart(); closeSidebar()">
           <span class="sidebar-icon">📤</span>
-          <span>匯出 BN 派工</span>
+          <span>匯出 Excel</span>
         </button>
-        <button class="sidebar-item sub" onclick="exportCopyExcel(); closeSidebar()">
-          <span class="sidebar-icon">📤</span>
-          <span>匯出 文案派工</span>
-        </button>
-        <button class="sidebar-item sub" onclick="downloadTemplate(); closeSidebar()">
+        <button class="sidebar-item sub" onclick="downloadTemplateSmart(); closeSidebar()">
           <span class="sidebar-icon">📄</span>
-          <span>BN 範本下載</span>
+          <span>下載範本</span>
         </button>
-        <button class="sidebar-item sub" onclick="downloadCopyTemplate(); closeSidebar()">
-          <span class="sidebar-icon">📄</span>
-          <span>文案範本下載</span>
-        </button>
-        <button class="sidebar-item sub" onclick="openImportHistory(); closeSidebar()">
+        <button class="sidebar-item sub" onclick="openImportHistorySmart(); closeSidebar()">
           <span class="sidebar-icon">📋</span>
-          <span>BN 匯入紀錄</span>
-        </button>
-        <button class="sidebar-item sub" onclick="openCopyImportHistory(); closeSidebar()">
-          <span class="sidebar-icon">📋</span>
-          <span>文案匯入紀錄</span>
+          <span>匯入紀錄</span>
         </button>
       </div>
     </nav>
   </aside>
 
-  <!-- 隱藏的 Excel 上傳 input（給漢堡選單裡的匯入按鈕用） -->
+  <!-- 隱藏的 Excel 上傳 input -->
+  <input type="file" id="import-xlsx-smart" accept=".xlsx,.xls" style="display:none" onchange="importExcelSmart(event)" />
   <input type="file" id="import-xlsx" accept=".xlsx,.xls" style="display:none" onchange="importExcel(event)" />
   <input type="file" id="copy-import-xlsx" accept=".xlsx,.xls" style="display:none" onchange="importCopyExcel(event)" />
 

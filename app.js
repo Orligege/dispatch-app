@@ -7,7 +7,7 @@
 const API_URL = 'https://script.google.com/macros/s/AKfycbyd-4qkCT8uiuOHI9ogAxHEJiwC7HE_hB7qv7HSN_Aw-EgHERLXENstweniDHE368c-/exec';
 
 // ⭐ API Token（要跟 Apps Script 那邊設定的一致）
-const API_TOKEN = 'jXJep5hy82PpeUTjtZoqE1jrvBzyMfhXXfRL9niKjmIZiaTF15L0JeycFRxH7C_E';
+const API_TOKEN = '改成你自己的長亂碼_例如_x9k2mP7vQ4nR8tL3wY6zB1jH5fA0sD';
 
 const STORAGE_KEY = 'bn_dispatch_cloud_v1';
 const PAGE_SIZE = 50;
@@ -848,6 +848,24 @@ function closeDetail() {
 }
 
 // ---------- Excel I/O ----------
+// 統一入口：依當前分頁自動派工到對應 model
+function exportExcelSmart() {
+  if (activeSection === 'copy') exportCopyExcel();
+  else exportExcel();
+}
+function importExcelSmart(event) {
+  if (activeSection === 'copy') importCopyExcel(event);
+  else importExcel(event);
+}
+function downloadTemplateSmart() {
+  if (activeSection === 'copy') downloadCopyTemplate();
+  else downloadTemplate();
+}
+function openImportHistorySmart() {
+  if (activeSection === 'copy') openCopyImportHistory();
+  else openImportHistory();
+}
+
 const EXCEL_HEADERS = ['派工日期', '大分類', 'BN類別', 'BN尺寸', 'BN內容', '檔案路徑', '派工者', '製作人', '需完成日', '完成日', '作業時間', '狀態'];
 
 function tasksToRows(tasks) {
