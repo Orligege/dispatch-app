@@ -6,6 +6,9 @@
 // 如果之後重新部署需要換 URL，把這行改掉就好
 const API_URL = 'https://script.google.com/macros/s/AKfycbyd-4qkCT8uiuOHI9ogAxHEJiwC7HE_hB7qv7HSN_Aw-EgHERLXENstweniDHE368c-/exec';
 
+// ⭐ API Token（要跟 Apps Script 那邊設定的一致）
+const API_TOKEN = 'jXJep5hy82PpeUTjtZoqE1jrvBzyMfhXXfRL9niKjmIZiaTF15L0JeycFRxH7C_E';
+
 const STORAGE_KEY = 'bn_dispatch_cloud_v1';
 const PAGE_SIZE = 50;
 const TRASH_RETENTION_DAYS = 30;
@@ -45,6 +48,7 @@ let currentCalendarMonth = new Date(); // 日曆目前顯示的月份
 async function api(action, params = {}) {
   const formData = new URLSearchParams();
   formData.append('action', action);
+  formData.append('token', API_TOKEN);   // ⭐ 每次呼叫都帶 token
   for (const [k, v] of Object.entries(params)) {
     formData.append(k, typeof v === 'string' ? v : JSON.stringify(v));
   }
@@ -683,7 +687,7 @@ function renderDetailView(id) {
       <dt>BN 內容</dt><dd>${escapeHtml(t.bnContent) || '—'}</dd>
       <dt>檔案路徑</dt><dd>
         <textarea class="modal-path-input" rows="2"
-                  placeholder="點此輸入檔案路徑..."
+                  placeholder="點此輸入檔案路徑（可換行）..."
                   onblur="updateField(${id}, 'filePath', this.value)">${escapeHtml(t.filePath)}</textarea>
       </dd>
       <dt>派工者</dt><dd>${escapeHtml(t.dispatcher) || '<span class="unassigned">未指定</span>'}</dd>
